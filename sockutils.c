@@ -17,6 +17,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -27,16 +28,18 @@
 
 #include "sockutils.h"
 
-int unblock( int sock, const char *error_str )
+int unblock( int sock, char **errorstr )
 {
     int flags;
 
-    if( ( flags = fcntl(sock, F_GETFL, NULL) ) < 0) { 
-        sprintf(error_str, "Error fcntl(..., F_GETFL) (%s)", strerror(errno)); 
+    if ( ( flags = fcntl(sock, F_GETFL, NULL) ) < 0) { 
+        if (errorstr != NULL)
+            *errorstr = strdup(strerror(errno));
         return 0;
     } 
-    if( fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) { 
-        sprintf(error_str, "Error fcntl(..., F_SETFL) (%s)", strerror(errno)); 
+    if ( fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) { 
+        if (errorstr != NULL)
+            *errorstr = strdup(strerror(errno));
         return 0;
     } 
     return 1;
@@ -44,7 +47,7 @@ int unblock( int sock, const char *error_str )
 
 struct addrinfo *prepare_addrinfo_tcp(const char *addr,
                                       const char *port,
-                                      char *error_str)
+                                      char **errorstr)
 {
     struct addrinfo hints, *res;
     int gai;
@@ -57,20 +60,22 @@ struct addrinfo *prepare_addrinfo_tcp(const char *addr,
     hints.ai_flags    = AI_PASSIVE;     // fill in my IP for me
 
     if ( ( gai = getaddrinfo(addr, port, &hints, &res) ) != 0 ) {
-        sprintf(error_str, "getaddrinfo() failed %s", gai_strerror(gai));
+        if (errorstr != NULL)
+            *errorstr = strdup(gai_strerror(gai) );
         return NULL;
     }
 
     return res;
 }
 
-int tcp_server(const char *bind_addr, const char *port, int flags, size_t backlog, const char *error_str)
+int tcp_server(const char *bind_addr, const char *port, int flags, size_t backlog, char **errorstr)
 {
     struct addrinfo *res;
     int sockfd, on;
+    static const char *bind_error = "failed to bind to port %s";
     on = 1;
 
-    if ( ( res = prepare_addrinfo_tcp(bind_addr, port, error_str) ) == NULL )
+    if ( ( res = prepare_addrinfo_tcp(bind_addr, port, errorstr) ) == NULL )
     {
         return SOCKERR;
     }
@@ -78,7 +83,8 @@ int tcp_server(const char *bind_addr, const char *port, int flags, size_t backlo
     /* socket creation */
     sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sockfd < 0) {
-        sprintf(error_str, "failed to create socket");
+        if (errorstr != NULL)
+            *errorstr = strdup("failed to create socket");
         return SOCKERR;
     }
 
@@ -86,27 +92,32 @@ int tcp_server(const char *bind_addr, const char *port, int flags, size_t backlo
     if ( flags & REUSE )
         if ( setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
                   &on, sizeof(on)) != 0) {
-            sprintf(error_str, "failed to set sockopt to reuse");
+            if (errorstr != NULL)
+                *errorstr = strdup("failed to set sockopt to reuse");
             close(sockfd);
             return SOCKERR; 
         }
 
     /* bind */
     if ( bind(sockfd, res->ai_addr, res->ai_addrlen) < 0 ) {
-        sprintf(error_str, "failed to bind to port %s", port);
+        if (errorstr != NULL)
+            if ( ( *errorstr = (char *)malloc( sizeof(char) * ( sizeof(bind_error) - 2 + strlen(port) ) ) ) != NULL )
+                sprintf(*errorstr, "failed to bind to port %s", port);
         close(sockfd);
         return SOCKERR; 
     }
 
     /* listen */
     if ( listen(sockfd, backlog) < 0 ) {
+        if (errorstr != NULL)
+            *errorstr = strdup("failed to listen to socket");
         close(sockfd);
         return SOCKERR; 
     }
 
     /* unblock socket */
     if ( flags & NONBLK )
-        if ( !unblock(sockfd, error_str) ) {
+        if ( !unblock(sockfd, errorstr) ) {
             close(sockfd);
             return SOCKERR;
         }
@@ -114,35 +125,45 @@ int tcp_server(const char *bind_addr, const char *port, int flags, size_t backlo
     return sockfd;
 }
 
-int tcp_client(const char *server_addr, const char *port, int flags, const char *error_str)
+#define STRERROR2ERRORSTR do {                                  \
+    if (errorstr != NULL) {                                     \
+        if (error_initialized) {                                \
+            free(*errorstr);                                    \
+            --error_initialized;                                \
+        }                                                       \
+        if ( ( *errorstr = strdup(strerror(errno) ) ) != NULL ) \
+            ++error_initialized;                                \
+    }                                                           \
+} while (0)
+
+int tcp_client(const char *server_addr, const char *port, int flags, char **errorstr)
 {
     struct addrinfo *servinfo, *p;
     int sockfd;
+    int error_initialized = 0;
     
-    if ( ( servinfo = prepare_addrinfo_tcp(server_addr, port, error_str) ) == NULL )
-    {
+    if ( ( servinfo = prepare_addrinfo_tcp(server_addr, port, errorstr) ) == NULL )
         return SOCKERR;
-    }
 
     // loop through all the results and connect to the first we can
-    for(p = servinfo; p != NULL; p = p->ai_next) {
+    for (p = servinfo; p != NULL; p = p->ai_next) {
 
         /* socket creation */
         if ((sockfd = socket(p->ai_family, p->ai_socktype,
                 p->ai_protocol)) == SOCKERR) {
-            sprintf(error_str, "client: socket :: %s", strerror(errno));
+            STRERROR2ERRORSTR;
             continue;
         }
 
         /* connect */
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == SOCKERR) {
             close(sockfd);
-            sprintf(error_str, "client: connect :: %s", strerror(errno));
+            STRERROR2ERRORSTR;
             continue;
         }
         /* unblock */
         if ( flags & NONBLK )
-            if ( !unblock(sockfd, error_str) ) {
+            if ( !unblock(sockfd, errorstr) ) {
                 close(sockfd);
                 continue;
             }
@@ -151,7 +172,8 @@ int tcp_client(const char *server_addr, const char *port, int flags, const char 
     }
 
     if (p == NULL) {
-        sprintf(error_str, "client: failed to connect");
+        if (errorstr != NULL && !error_initialized)
+                *errorstr = strdup("failed to connect");
         sockfd = SOCKERR;
     }
 

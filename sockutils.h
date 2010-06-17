@@ -24,9 +24,9 @@
 #define REUSE    1
 #define NONBLK   2
 
-int unblock(int , char *);
-struct addrinfo *prepare_addrinfo_tcp(const char *, const char *, char *);
-int tcp_server(const char *, const char *, int, size_t, const char *);
-int tcp_client(const char *, const char *, int, const char *);
+int unblock(int , char **);
+struct addrinfo *prepare_addrinfo_tcp(const char *, const char *, char **);
+int tcp_server(const char *, const char *, int, size_t, char **);
+int tcp_client(const char *, const char *, int, char **);
 
 #endif /* SOCKUTILS_H */
