@@ -27,6 +27,6 @@
 int unblock(int , char **);
 struct addrinfo *prepare_addrinfo_tcp(const char *, const char *, char **);
 int tcp_server(const char *, const char *, int, size_t, char **);
-int tcp_client(const char *, const char *, int, char **);
+int tcp_client(char const *server_addr, char const *port, int flags, char **errorstr);
 
 #endif /* SOCKUTILS_H */

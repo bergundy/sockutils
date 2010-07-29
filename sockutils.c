@@ -136,7 +136,7 @@ int tcp_server(const char *bind_addr, const char *port, int flags, size_t backlo
     }                                                           \
 } while (0)
 
-int tcp_client(const char *server_addr, const char *port, int flags, char **errorstr)
+int tcp_client(char const *server_addr, char const *port, int flags, char **errorstr)
 {
     struct addrinfo *servinfo, *p;
     int sockfd;
