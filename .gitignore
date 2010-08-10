@@ -2,3 +2,5 @@
 *.so
 *.swp
 *.swo
+tests/*.t
+docs

@@ -1,0 +1,32 @@
+CC=gcc
+CFLAGS=-Wall
+VPATH=src
+LIBS=-lpthread
+PREFIX=/usr
+TESTCFLAGS=$(CFLAGS) -I$(VPATH)
+TESTLIBS=$(LIBS) -lcheck
+
+all: libsockutils.so
+
+check: tests/sock.t
+	tests/sock.t
+
+tests/sock.t: tests/check_sock.c sockutils.o
+	$(CC) $(TESTCFLAGS) -o $@ tests/check_sock.c sockutils.o $(TESTLIBS)
+
+libsockutils.so: sockutils.o $(VPATH)/sockutils.h
+	$(CC) $(CFLAGS) -shared -o $@ sockutils.o $(LIBS)
+
+sockutils.o: $(VPATH)/sockutils.c $(VPATH)/sockutils.h
+	$(CC) $(FLAGS) -c $(VPATH)/sockutils.c
+
+clean:
+	rm -f *.o *.so tests/*.t
+
+install: $(VPATH)/sockutils.h libsockutils.so
+	cp sockutils.h /usr/include
+	cp libsockutils.so /usr/lib
+
+uninstall:
+	rm -f $(PREFIX)/include/sockutils.h 
+	rm -f $(PREFIX)/lib/libsockutils.so 
