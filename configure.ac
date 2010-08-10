@@ -1,5 +1,5 @@
 AC_PREREQ([2.59])
-AC_INIT([sockutils], [1.0], [royb@walla.net.il])
+AC_INIT([sockutils], [1.0], [roey.berman@gmail.com])
 AC_CONFIG_SRCDIR([src/sockutils.h])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
